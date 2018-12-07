@@ -63,7 +63,13 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 #### Create a docker-compose environment
 
 - Edit the `.env` to your liking. Adapt this file with your FQDN.
+  - This file supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
+  - Don't quote your values.
+  - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
 - Install [docker-compose](https://docs.docker.com/compose/) in the version `1.6` or higher.
+
+#### Start Container
+    docker-compose up -d mail
 
 #### Create your mail accounts
 
@@ -75,8 +81,9 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 
 Now the keys are generated, you can configure your DNS server by just pasting the content of `config/opendkim/keys/domain.tld/mail.txt` in your `domain.tld.hosts` zone.
 
-#### Start the container
+#### Restart the container
 
+    docker-compose down
     docker-compose up -d mail
 
 You're done!
@@ -174,11 +181,12 @@ services:
       - LDAP_SEARCH_BASE=ou=people,dc=localhost,dc=localdomain
       - LDAP_BIND_DN=cn=admin,dc=localhost,dc=localdomain
       - LDAP_BIND_PW=admin
-      - LDAP_QUERY_FILTER_USER="(&(mail=%s)(mailEnabled=TRUE))"
-      - LDAP_QUERY_FILTER_GROUP="(&(mailGroupMember=%s)(mailEnabled=TRUE))"
-      - LDAP_QUERY_FILTER_ALIAS="(&(mailAlias=%s)(mailEnabled=TRUE))"
-      - DOVECOT_PASS_FILTER="(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"
-      - DOVECOT_USER_FILTER="(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"
+      - LDAP_QUERY_FILTER_USER=(&(mail=%s)(mailEnabled=TRUE))
+      - LDAP_QUERY_FILTER_GROUP=(&(mailGroupMember=%s)(mailEnabled=TRUE))
+      - LDAP_QUERY_FILTER_ALIAS=(&(mailAlias=%s)(mailEnabled=TRUE))
+      - LDAP_QUERY_FILTER_DOMAIN=(&(|(mail=*@%s)(mailalias=*@%s)(mailGroupMember=*@%s))(mailEnabled=TRUE))
+      - DOVECOT_PASS_FILTER=(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))
+      - DOVECOT_USER_FILTER=(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))
       - ENABLE_SASLAUTHD=1
       - SASLAUTHD_MECHANISMS=ldap
       - SASLAUTHD_LDAP_SERVER=ldap
@@ -186,6 +194,7 @@ services:
       - SASLAUTHD_LDAP_PASSWORD=admin
       - SASLAUTHD_LDAP_SEARCH_BASE=ou=people,dc=localhost,dc=localdomain
       - POSTMASTER_ADDRESS=postmaster@localhost.localdomain
+      - POSTFIX_MESSAGE_SIZE_LIMIT=100000000
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
@@ -247,8 +256,9 @@ Otherwise, `iptables` won't be able to ban IPs.
   - **empty** => SSL disabled
   - letsencrypt => Enables Let's Encrypt certificates
   - custom => Enables custom certificates
-  - manual => Let's you manually specify locations of your SSL certificates for non-standard cases
+  - manual => Let you manually specify locations of your SSL certificates for non-standard cases
   - self-signed => Enables self-signed certificates
+  - _any other value_ => SSL required, settings by default
 
 Please read [the SSL page in the wiki](https://github.com/tomav/docker-mailserver/wiki/Configure-SSL) for more information.
 
@@ -298,6 +308,18 @@ Enabled by ENABLE_POSTFIX_VIRTUAL_TRANSPORT. Specify the final delivery of postf
 - `lmtps:inet:<host>:<port>` (secure lmtp with starttls, take a look at https://sys4.de/en/blog/2014/11/17/sicheres-lmtp-mit-starttls-in-dovecot/)
 - `lmtp:<kopano-host>:2003` (use kopano as mailstore)
 - etc.
+
+##### POSTFIX\_MAILBOX\_SIZE\_LIMIT
+
+Set the mailbox size limit for all users. If set to zero, the size will be unlimited (default).
+
+- **empty** => 0 (no limit)
+
+##### POSTFIX\_MESSAGE\_SIZE\_LIMIT
+
+Set the message size limit for all users. If set to zero, the size will be unlimited (not recommended!)
+
+- **empty** => 10240000 (~10 MB)
 
 ##### ENABLE_MANAGESIEVE
 
@@ -435,6 +457,11 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
   - e.g. `"(&(mailAlias=%s)(mailEnabled=TRUE))"`
   - => Specify how ldap should be asked for aliases
+  
+##### LDAP_QUERY_FILTER_DOMAIN
+
+- e.g. `"(&(|(mail=*@%s)(mailalias=*@%s)(mailGroupMember=*@%s))(mailEnabled=TRUE))"`
+- => Specify how ldap should be asked for domains
 
 ##### DOVECOT_TLS
 
@@ -467,6 +494,12 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### POSTGREY_MAX_AGE
 
   - **35** => delete entries older than N days since the last time that they have been seen
+
+Note: This postgrey setting needs `ENABLE_POSTGREY=1`
+
+##### POSTGREY_AUTO_WHITELIST_CLIENTS
+
+  - **5** => whitelist host after N successful deliveries (N=0 to disable whitelisting)
 
 Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 
